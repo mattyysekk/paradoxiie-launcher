@@ -1,0 +1,40 @@
+appId: com.matt.paradoxiie
+productName: Paradoxiie Launcher
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!scripts/*'
+  - '!games.json'
+  - '!**/*.log'
+  - '!dist/**'
+  - '!README.md'
+  - '!**/*.map'
+  - '!**/*.d.ts'
+win:
+  executableName: ParadoxiieLauncher
+  icon: build/icon.png
+  target: [nsis]
+nsis:
+  # one click, per user: no admin prompt, and it can update itself in place
+  oneClick: true
+  perMachine: false
+  runAfterFinish: true
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  createDesktopShortcut: always
+npmRebuild: false
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+
+# The launcher updates itself from this repository's Releases (the release workflow publishes there).
+publish:
+  provider: github
+  owner: mattyysekk
+  repo: paradoxiie-launcher
+  releaseType: release

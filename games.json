@@ -1,0 +1,28 @@
+{
+  "games": [
+    {
+      "id": "hullbreak",
+      "name": "Hullbreak 3D",
+      "tagline": "Build a ship from blocks and win the war.",
+      "accent": "#ffb000",
+      "art": "hullbreak",
+      "repo": "mattyysekk/hullbreak-releases",
+      "kind": "nsis",
+      "asset": "-setup\\.exe$",
+      "exe": "Hullbreak3D.exe",
+      "installName": "Hullbreak 3D",
+      "defaultDir": "%LOCALAPPDATA%\\Programs\\hullbreak3d",
+      "env": { "HB_NO_UPDATE": "1" }
+    },
+    {
+      "id": "enemy-skies",
+      "name": "Enemy Skies",
+      "tagline": "Hold the line in a hand-drawn sky.",
+      "accent": "#8fd6ff",
+      "art": "skies",
+      "repo": "mattyysekk/enemy-skies-releases",
+      "kind": "zip",
+      "asset": "windows\\.zip$"
+    }
+  ]
+}
