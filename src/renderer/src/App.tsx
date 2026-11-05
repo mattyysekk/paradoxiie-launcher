@@ -29,7 +29,7 @@ function status(g: GameView): { text: string; tone?: 'hot' | 'bad' | 'dim' } {
   if (g.busy) return { text: g.busy.pct != null ? `${g.busy.text.split(':')[0]} ${Math.floor(g.busy.pct)}%` : g.busy.text, tone: 'hot' }
   if (g.running) return { text: 'Playing now', tone: 'hot' }
   if (hasUpdate(g)) return { text: `Update: ${g.latest!.version}`, tone: 'hot' }
-  if (g.installed) return { text: `${g.version} · up to date` }
+  if (g.installed) return { text: g.checked && !g.error && g.latest ? `${g.version} · up to date` : `${g.version ?? 'Installed'}` }
   if (g.checked && !g.latest && !g.error) return { text: 'Coming soon', tone: 'dim' }
   if (g.error && !g.latest) return { text: 'Not installed', tone: 'dim' }
   return { text: 'Not installed', tone: 'dim' }

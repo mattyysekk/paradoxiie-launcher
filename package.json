@@ -1,7 +1,7 @@
 {
   "name": "paradoxiie-launcher",
   "productName": "Paradoxiie Launcher",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Paradoxiie Launcher: install, play and update Matt's games",
   "main": "./out/main/index.js",
   "author": "Matt",

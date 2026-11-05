@@ -7,7 +7,7 @@
      and remembers the version in a small file next to it. */
 import { app } from 'electron'
 import { execFile, spawn, type ChildProcess } from 'child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import extract from 'extract-zip'
@@ -58,24 +58,62 @@ async function findInstalled(def: GameDef): Promise<Found | null> {
       }
       const name = val('DisplayName') ?? ''
       if (!name.toLowerCase().startsWith(def.installName.toLowerCase())) continue
-      const dir = val('InstallLocation')
-      if (!dir || !existsSync(join(dir, def.exe ?? ''))) continue
-      return { dir, version: val('DisplayVersion') ?? asarVersion(dir), uninstall: val('QuietUninstallString') ?? val('UninstallString') }
+      // electron-builder doesn't write InstallLocation into this key: the icon and uninstaller paths say where it is
+      const dir = val('InstallLocation') || folderOf(val('DisplayIcon')) || folderOf(val('UninstallString'))
+      if (!dir || !existsSync(join(dir, def.exe ?? ''))) {
+        log('detect', def.id, 'registry entry without a game folder', key, dir)
+        continue
+      }
+      const found = { dir, version: val('DisplayVersion') ?? asarVersion(dir), uninstall: val('QuietUninstallString') ?? val('UninstallString') }
+      log('detect', def.id, 'from the registry', found)
+      return found
     }
   }
   if (def.defaultDir) {
     const dir = expand(def.defaultDir)
-    if (dir && def.exe && existsSync(join(dir, def.exe))) return { dir, version: asarVersion(dir), uninstall: null }
+    if (dir && def.exe && existsSync(join(dir, def.exe))) {
+      const found = { dir, version: asarVersion(dir), uninstall: null }
+      log('detect', def.id, 'in the default folder', found)
+      return found
+    }
   }
   return null
 }
 
-/** an Electron game's version, from the package.json inside its app.asar (Electron reads into .asar files) */
+/** "C:\\…\\Game.exe",0  /  "C:\\…\\Uninstall Game.exe" /currentuser  →  the folder holding it */
+function folderOf(cmd: string | null): string | null {
+  if (!cmd) return null
+  const m = /^"([^"]+)"/.exec(cmd) ?? /^(.*?\.exe)\b/i.exec(cmd)
+  return m ? dirname(m[1]) : null
+}
+
+/** An Electron game's version, from the package.json inside its app.asar.
+ *  Read by hand with process.noAsar: going through Electron's own .asar support would keep app.asar open for as long
+ *  as the launcher runs, and the game's installer then can't replace it (the "could not uninstall old files: 2" error). */
 function asarVersion(dir: string): string | null {
+  const file = join(dir, 'resources', 'app.asar')
+  const before = process.noAsar
+  process.noAsar = true
+  let fd = -1
   try {
-    return JSON.parse(readFileSync(join(dir, 'resources', 'app.asar', 'package.json'), 'utf8')).version ?? null
+    fd = openSync(file, 'r')
+    const head = Buffer.alloc(16)
+    readSync(fd, head, 0, 16, 0)
+    const headerSize = head.readUInt32LE(4)
+    const jsonSize = head.readUInt32LE(12)
+    if (jsonSize > 64 << 20) return null
+    const json = Buffer.alloc(jsonSize)
+    readSync(fd, json, 0, jsonSize, 16)
+    const pkg = JSON.parse(json.toString('utf8')).files?.['package.json'] as { size: number; offset: string; unpacked?: boolean } | undefined
+    if (!pkg || pkg.unpacked || pkg.size > 1 << 20) return null
+    const body = Buffer.alloc(pkg.size)
+    readSync(fd, body, 0, pkg.size, 8 + headerSize + Number(pkg.offset))
+    return JSON.parse(body.toString('utf8')).version ?? null
   } catch {
     return null
+  } finally {
+    if (fd >= 0) closeSync(fd)
+    process.noAsar = before
   }
 }
 
@@ -288,6 +326,8 @@ export class Games {
       p.on('error', reject)
       p.on('exit', (c) => resolve(c ?? 0))
     })
+    if (code === 2)
+      throw new Error(`Windows wouldn't let the installer replace the old files: something still has one of them open. Close the game (and anything opened from its folder) and try again. If it keeps happening, restart the PC first.`)
     if (code !== 0) throw new Error(`The installer stopped with code ${code}. Is the game still open?`)
     // the installed-apps entry can trail the installer by a moment
     for (let i = 0; i < 20; i++) {
