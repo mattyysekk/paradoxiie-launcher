@@ -53,6 +53,8 @@ export async function latestRelease(game: GameDef): Promise<Release> {
     url: r.html_url,
     assetUrl: asset?.browser_download_url ?? null,
     assetName: asset?.name ?? null,
-    size: asset?.size ?? 0
+    size: asset?.size ?? 0,
+    packUrl: r.assets.find((a) => /\.pack$/i.test(a.name))?.browser_download_url ?? null,
+    indexUrl: r.assets.find((a) => /\.chunks\.json$/i.test(a.name))?.browser_download_url ?? null
   }
 }

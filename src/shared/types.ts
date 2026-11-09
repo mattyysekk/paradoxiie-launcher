@@ -32,6 +32,9 @@ export interface Release {
   assetUrl: string | null
   assetName: string | null
   size: number
+  /** pieces for updating by downloading only what changed (see src/main/delta.ts), when the release has them */
+  packUrl: string | null
+  indexUrl: string | null
 }
 
 export interface Busy {

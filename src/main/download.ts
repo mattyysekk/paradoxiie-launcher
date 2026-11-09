@@ -33,3 +33,20 @@ export async function download(url: string, file: string, progress: (got: number
     throw err
   }
 }
+
+/** one range of a file (bytes start..end, both included); the server must answer with just that part */
+export async function getRange(url: string, start: number, end: number, signal?: AbortSignal): Promise<Buffer> {
+  const res = await net.fetch(url, { headers: { 'User-Agent': 'Paradoxiie-Launcher', Range: `bytes=${start}-${end}` }, signal })
+  if (res.status !== 206) {
+    await res.body?.cancel().catch(() => undefined)
+    throw new Error(`the server would not send part of the file (HTTP ${res.status})`)
+  }
+  return Buffer.from(await res.arrayBuffer())
+}
+
+/** a small JSON file */
+export async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const res = await net.fetch(url, { headers: { 'User-Agent': 'Paradoxiie-Launcher' }, signal })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return (await res.json()) as T
+}

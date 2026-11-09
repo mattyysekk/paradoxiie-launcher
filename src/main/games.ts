@@ -12,7 +12,8 @@ import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import extract from 'extract-zip'
 import type { Busy, GameDef, GameView, Release } from '../shared/types'
-import { download } from './download'
+import { download, getJson, getRange } from './download'
+import { buildInto, fetchPieces, patchInPlace, plan, scan, type Index } from './delta'
 import { compare, latestRelease, NoRelease } from './releases'
 import { log } from './log'
 
@@ -42,6 +43,8 @@ interface Found {
   dir: string
   version: string | null
   uninstall: string | null
+  /** nsis: its entry in Windows' installed-apps list */
+  key?: string
 }
 
 /** nsis: where Windows says the game is installed (current user's apps) */
@@ -64,7 +67,8 @@ async function findInstalled(def: GameDef): Promise<Found | null> {
         log('detect', def.id, 'registry entry without a game folder', key, dir)
         continue
       }
-      const found = { dir, version: val('DisplayVersion') ?? asarVersion(dir), uninstall: val('QuietUninstallString') ?? val('UninstallString') }
+      // (what's in the folder first: an update by pieces changes the files, and the list's version only after)
+      const found: Found = { dir, version: asarVersion(dir) ?? val('DisplayVersion'), uninstall: val('QuietUninstallString') ?? val('UninstallString'), key }
       log('detect', def.id, 'from the registry', found)
       return found
     }
@@ -288,6 +292,30 @@ export class Games {
     const file = join(tmpdir(), 'paradoxiie-launcher', latest.assetName)
     const ctl = new AbortController()
     e.abort = ctl
+    // an update: first try downloading only what changed
+    if (updating && e.found && latest.packUrl && latest.indexUrl) {
+      try {
+        const bytes = await this.updateByPieces(e, latest, ctl.signal)
+        if (bytes != null) {
+          await this.detect(e)
+          if (!e.view.installed || !e.view.version || compare(e.view.version, latest.version) < 0) throw new Error('the game does not show the new version after the update')
+          log('updated by pieces', id, latest.version, bytes)
+          this.ev.toast(`${e.def.name} updated to ${latest.version}${auto ? ' automatically' : ''} (${mb(bytes)} MB downloaded: only what changed).`, 'ok')
+          e.abort = null
+          this.busy(e, null)
+          return
+        }
+      } catch (err) {
+        if (ctl.signal.aborted) {
+          e.abort = null
+          this.busy(e, null)
+          this.ev.toast('Download cancelled.', 'info')
+          return
+        }
+        // anything odd: the full download below puts it right
+        log('update by pieces failed, downloading it all', id, err)
+      }
+    }
     try {
       this.busy(e, { what: 'download', pct: 0, text: `Downloading ${latest.version}…` })
       await download(
@@ -337,6 +365,44 @@ export class Games {
     }
   }
 
+  /** Update by downloading only the pieces that changed. Returns the bytes downloaded, or null when it isn't worth it
+   *  (most of the game changed: the full download is about as big and simpler). Throws when anything doesn't add up. */
+  private async updateByPieces(e: Entry, latest: Release, signal: AbortSignal): Promise<number | null> {
+    const dir = e.found!.dir
+    this.busy(e, { what: 'download', pct: null, text: `Checking what changed in ${latest.version}…` })
+    const idx = await getJson<Index>(latest.indexUrl!, signal)
+    if (idx.v !== 1 || !Array.isArray(idx.files) || !idx.chunks) throw new Error('an index this launcher does not know')
+    // cut the copy we have into pieces (a file at a time, letting the window breathe in between)
+    const have = await scan(dir, idx, async (done, total) => {
+      this.busy(e, { what: 'download', pct: total ? (done / total) * 100 : null, text: `Checking what changed in ${latest.version}…` })
+      await new Promise((r) => setImmediate(r))
+      if (signal.aborted) throw new Error('cancelled')
+    })
+    const p = plan(idx, have)
+    log('pieces', e.def.id, latest.version, { download: p.bytes, whole: p.whole, ranges: p.ranges.length })
+    if (p.bytes > p.whole * 0.6) return null
+    const got = await fetchPieces(
+      latest.packUrl!,
+      idx,
+      p,
+      getRange,
+      (n, t) => this.busy(e, { what: 'download', pct: t ? (n / t) * 100 : null, text: `Downloading the changes in ${latest.version}: ${mb(n)} / ${mb(t)} MB` }),
+      signal
+    )
+    this.busy(e, { what: 'install', pct: null, text: `Updating to ${latest.version}…` })
+    if (e.def.kind === 'nsis') {
+      const n = patchInPlace(dir, idx, have, got)
+      log('patched', e.def.id, n, 'files')
+      // Windows' installed-apps list shows the new version too
+      if (WIN && e.found!.key) await run('reg', ['add', e.found!.key, '/v', 'DisplayVersion', '/t', 'REG_SZ', '/d', latest.version, '/f'])
+    } else {
+      const fresh = join(gamesRoot(), e.def.id + '.new')
+      buildInto(fresh, idx, have, got)
+      this.swapIn(e, fresh, fresh, latest.version)
+    }
+    return p.bytes
+  }
+
   private async unpack(e: Entry, file: string, version: string): Promise<void> {
     const dir = join(gamesRoot(), e.def.id)
     const fresh = dir + '.new'
@@ -349,6 +415,14 @@ export class Games {
     let root = fresh
     const top = readdirSync(fresh)
     if (top.length === 1 && statSync(join(fresh, top[0])).isDirectory()) root = join(fresh, top[0])
+    this.swapIn(e, fresh, root, version)
+  }
+
+  /** put a freshly made copy of a zip game (`root`, inside `fresh`) where the game lives, the old one out */
+  private swapIn(e: Entry, fresh: string, root: string, version: string): void {
+    const dir = join(gamesRoot(), e.def.id)
+    const old = dir + '.old'
+    rmSync(old, { recursive: true, force: true })
     if (!zipExe(e.def, root)) throw new Error('The download has no game program in it.')
     writeFileSync(join(root, MARK), JSON.stringify({ version, installed: new Date().toISOString() }))
     if (existsSync(dir)) renameSync(dir, old)

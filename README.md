@@ -18,6 +18,13 @@ and run it. It installs without admin rights, puts a shortcut on the desktop and
     silently and finds the installed game through Windows' installed-apps list.
   - `kind: "zip"`: the release has a `…windows.zip` (Enemy Skies, from `mattyysekk/enemy-skies-releases`). The launcher
     unzips it into its Games folder.
+- **Small updates:** a release can also carry a `.pack` and a `.chunks.json` (made by `.github/paradoxiie/pack.mjs` in
+  the game's releases repository): the built game cut into pieces where its content says. To update, the launcher cuts
+  the copy on this PC the same way, keeps every piece it has and downloads only the missing ones (ranges of the pack),
+  so an update costs about what changed (a megabyte or two) instead of the whole game. Every piece is checked against
+  its hash; if anything doesn't add up, or most of the game changed, it falls back to the full download. Hullbreak is
+  patched in place (only the changed files, its uninstaller stays); Enemy Skies is rebuilt beside the old copy and
+  swapped in. The cutting in `src/main/delta.ts` and in `pack.mjs` must stay the same.
 - The newest release of each game comes from GitHub's API (no sign-in), checked on start, every 30 minutes and when the
   window comes back after a while.
 - Releasing the launcher: raise `version` in `package.json` and push. The workflow builds the installer and publishes
