@@ -9,7 +9,10 @@
    the missing ones (ranges of the pack). THE CUTTING HERE AND IN pack.mjs MUST MATCH. Every piece is checked against
    its hash before it is used, so a mismatch can only cost a full download, never a broken game. */
 import { createHash, type Hash } from 'crypto'
-import { closeSync, existsSync, mkdirSync, openSync, readSync, renameSync, rmSync, statSync, writeSync } from 'fs'
+// Electron's own fs treats anything named .asar as a folder, and keeps every .asar it has looked into open until the
+// launcher quits: a game's app.asar held open like that can't be replaced, by us or by its installer ("Windows
+// wouldn't let the installer replace the old files"). The game's files are only ever plain files to us.
+import { closeSync, existsSync, mkdirSync, openSync, readSync, renameSync, rmSync, statSync, writeSync } from 'original-fs'
 import { dirname, join } from 'path'
 import { inflateRawSync } from 'zlib'
 

@@ -6,7 +6,8 @@ import react from '@vitejs/plugin-react'
 const shipped = { minify: 'esbuild' as const, sourcemap: false }
 
 export default defineConfig({
-  main: { build: shipped },
+  // original-fs: Electron's plain fs (no .asar magic), there at run time
+  main: { build: { ...shipped, rollupOptions: { external: ['original-fs'] } } },
   preload: { build: shipped },
   renderer: {
     resolve: {

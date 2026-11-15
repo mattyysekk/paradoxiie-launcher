@@ -7,7 +7,8 @@
      and remembers the version in a small file next to it. */
 import { app } from 'electron'
 import { execFile, spawn, type ChildProcess } from 'child_process'
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
+// (the game's files through the plain fs, never Electron's .asar-aware one: see delta.ts)
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'original-fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import extract from 'extract-zip'
